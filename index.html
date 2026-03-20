@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drogaria Moura</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header" id="header">
+  <div class="header-inner">
+    <div class="logo">
+      <img src="mascote.png" alt="Mascote" class="logo-mascote" onerror="this.style.display='none'">
+      <img src="logo.png" alt="Drogaria Moura" class="logo-img" onerror="this.style.display='none'; document.getElementById('logoFallback').style.display='flex'">
+      <div class="logo-fallback" id="logoFallback">
+        <div class="logo-text">
+        </div>
+      </div>
+    </div>
+    <div class="header-search">
+      <input type="text" id="searchInput" placeholder="Buscar produto..." oninput="filterProducts()">
+      <span class="search-icon">🔍</span>
+    </div>
+    <button class="cart-btn" onclick="toggleCart()">
+      🛒 <span class="cart-count" id="cartCount">0</span>
+    </button>
+  </div>
+</header>
+
+<!-- BANNER -->
+<section class="banner" id="mainPage">
+  <div class="banner-slide active" style="background: linear-gradient(135deg, #1565C0 0%, #0D47A1 50%, #B71C1C 100%);">
+    <div class="banner-content">
+      <span class="banner-tag">🔥 OFERTA ESPECIAL</span>
+      <h2>Até 50% OFF</h2>
+      <p>Em Promoçoes </p>
+      <button onclick="setCategory('Promoções')" class="banner-btn">Ver ofertas</button>
+    </div>
+    <div class="banner-img">💊</div>
+  </div>
+</section>
+
+<!-- CATEGORIES -->
+<section class="categories-section">
+  <h3 class="section-title">Categorias</h3>
+  <div class="categories-scroll" id="categoriesScroll">
+    <button class="cat-btn active" onclick="setCategory('Todos')">
+      <span class="cat-icon">🏪</span>
+      <span>Todos</span>
+    </button>
+    <!-- Dynamic categories will be added here -->
+  </div>
+</section>
+
+<!-- PROMO STRIP -->
+<div class="promo-strip">
+  <div class="promo-items">
+    <span>🚚 Entrega Rápida</span>
+    <span>✅ Produtos Originais</span>
+    <span>💳 Pix com Desconto</span>
+    <span>📞 Atendimento 24h</span>
+    <span>🚚 Entrega Rápida</span>
+    <span>✅ Produtos Originais</span>
+    <span>💳 Pix com Desconto</span>
+    <span>📞 Atendimento 24h</span>
+  </div>
+</div>
+
+<!-- PRODUCTS -->
+<section class="products-section">
+  <div class="products-header">
+    <h3 class="section-title" id="productsTitle">Todos os Produtos</h3>
+    <span class="products-count" id="productsCount"></span>
+  </div>
+  <div class="products-grid" id="productsGrid">
+    <!-- Products rendered by JS -->
+  </div>
+  <div class="empty-state" id="emptyState" style="display:none">
+    <span>😕</span>
+    <p>Nenhum produto encontrado</p>
+  </div>
+</section>
+
+<!-- CART SIDEBAR -->
+<div class="cart-overlay" id="cartOverlay" onclick="toggleCart()"></div>
+<div class="cart-sidebar" id="cartSidebar">
+  <div class="cart-header">
+    <h3>🛒 Meu Carrinho</h3>
+    <button onclick="toggleCart()" class="close-btn">✕</button>
+  </div>
+  <div class="cart-items" id="cartItems">
+    <div class="cart-empty" id="cartEmpty">
+      <span>🛒</span>
+      <p>Seu carrinho está vazio</p>
+    </div>
+  </div>
+  <div class="cart-footer" id="cartFooter" style="display:none">
+    <div class="min-order-notice" id="minOrderNotice">
+      🛵 Valor mínimo para entrega: <strong>R$ 25,00</strong>
+    </div>
+    <div class="cart-total">
+      <span>Total:</span>
+      <strong id="cartTotal">R$ 0,00</strong>
+    </div>
+    <div class="min-order-warning" id="minOrderWarning" style="display:none">
+      ⚠️ Valor mínimo não atingido (R$ 25,00)
+    </div>
+    <button class="checkout-btn" id="checkoutBtn" onclick="showCheckout()">Finalizar Pedido →</button>
+  </div>
+</div>
+
+<!-- CHECKOUT MODAL -->
+<div class="modal-overlay" id="checkoutModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>📋 Finalizar Pedido</h3>
+      <button onclick="closeCheckout()" class="close-btn">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="order-summary" id="orderSummary"></div>
+      <div class="form-section">
+        <h4>Seus dados</h4>
+        <div class="form-group">
+          <label>Nome completo *</label>
+          <input type="text" id="clientName" placeholder="Seu nome" required>
+        </div>
+        <div class="form-group">
+          <label>Telefone *</label>
+          <input type="tel" id="clientPhone" placeholder="(00) 00000-0000" required>
+        </div>
+        <div class="form-group">
+          <label>Endereço de entrega *</label>
+          <input type="text" id="clientAddress" placeholder="Rua, número, bairro" required>
+        </div>
+        <h4>Forma de pagamento</h4>
+        <div class="payment-options">
+          <label class="payment-opt">
+            <input type="radio" name="payment" value="Dinheiro" onchange="handlePaymentChange()"> 💵 Dinheiro
+          </label>
+          <label class="payment-opt">
+            <input type="radio" name="payment" value="Pix" onchange="handlePaymentChange()"> 📱 Pix
+          </label>
+          <label class="payment-opt">
+            <input type="radio" name="payment" value="Cartão (maquininha)" onchange="handlePaymentChange()"> 💳 Cartão
+          </label>
+          <label class="payment-opt">
+            <input type="radio" name="payment" value="Convênio" onchange="handlePaymentChange()"> 🏥 Convênio
+          </label>
+        </div>
+
+        <!-- TROCO (só aparece quando dinheiro) -->
+        <div class="troco-section" id="trocoSection" style="display:none">
+          <h4>💵 Precisa de troco?</h4>
+          <div class="troco-options">
+            <label class="payment-opt">
+              <input type="radio" name="troco" value="nao" checked onchange="handleTrocoChange()"> ✅ Não preciso de troco
+            </label>
+            <label class="payment-opt">
+              <input type="radio" name="troco" value="sim" onchange="handleTrocoChange()"> 💵 Sim, preciso de troco
+            </label>
+          </div>
+          <div class="form-group" id="trocoValorGroup" style="display:none">
+            <label>Troco para quanto? *</label>
+            <input type="number" id="trocoValor" placeholder="Ex: 50.00" step="0.01" min="0">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeCheckout()" class="btn-secondary">Voltar</button>
+      <button onclick="finalizarPedido()" class="btn-whatsapp">📲 Enviar pelo WhatsApp</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN LINK (hidden, accessed via /admin or ?admin) -->
+<a href="admin.html" class="admin-link" id="adminLink">⚙️</a>
+
+<script src="app.js"></script>
+</body>
+</html>
