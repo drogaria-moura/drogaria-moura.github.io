@@ -1,8 +1,24 @@
-// ===== CONFIGURAÇÃO FIXA (edite aqui para alterar o WhatsApp) =====
+// ===== CONFIGURAÇÃO FIREBASE =====
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, doc, onSnapshot, getDocs, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBbdRea1buoftYzpBP8QCs",
+  authDomain: "drogaria-moura-c7bcc.firebaseapp.com",
+  projectId: "drogaria-moura-c7bcc",
+  storageBucket: "drogaria-moura-c7bcc.appspot.com",
+  messagingSenderId: "632310446528",
+  appId: "1:632310446528:web:bc5081469",
+  measurementId: "G-SX0TTBLZTT"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
+
+// ===== CONFIGURAÇÃO FIXA =====
 const WHATSAPP_FIXO = "5511999999999"; // ← ALTERE PARA O NÚMERO REAL DA DROGARIA
 const VALOR_MINIMO_ENTREGA = 25.00;
 
-// ===== DATA STORE =====
 const DEFAULT_PRODUCTS = [
   { id: 1, nome: "Dipirona 500mg", descricao: "Analgésico e antitérmico 20 comprimidos", preco: 5.90, categoria: "Medicamentos", emoji: "💊", status: "ativo", promo: false, estoque: 50 },
   { id: 2, nome: "Paracetamol 750mg", descricao: "Alívio de dores e febre 20 comprimidos", preco: 7.50, categoria: "Medicamentos", emoji: "💊", status: "ativo", promo: true, estoque: 40 },
@@ -34,45 +50,93 @@ const DEFAULT_CONFIG = {
 let cart = [];
 let currentCategory = "Todos";
 let searchQuery = "";
+let cachedProducts = null;
+let cachedCategories = null;
+let cachedConfig = null;
 
-// ===== STORAGE =====
-function getProducts() {
-  const stored = localStorage.getItem('dm_products');
-  if (stored) return JSON.parse(stored);
-  localStorage.setItem('dm_products', JSON.stringify(DEFAULT_PRODUCTS));
-  return DEFAULT_PRODUCTS;
+// ===== FIREBASE: INICIALIZAR DADOS PADRÃO SE VAZIO =====
+async function initFirebaseData() {
+  try {
+    // Verifica se já tem produtos
+    const prodSnap = await getDocs(collection(db, "produtos"));
+    if (prodSnap.empty) {
+      for (const p of DEFAULT_PRODUCTS) {
+        await setDoc(doc(db, "produtos", String(p.id)), p);
+      }
+    }
+
+    // Verifica se já tem categorias
+    const catSnap = await getDocs(collection(db, "categorias"));
+    if (catSnap.empty) {
+      for (const c of DEFAULT_CATEGORIES) {
+        await setDoc(doc(db, "categorias", String(c.id)), c);
+      }
+    }
+
+    // Verifica se já tem config
+    const cfgSnap = await getDoc(doc(db, "config", "geral"));
+    if (!cfgSnap.exists()) {
+      await setDoc(doc(db, "config", "geral"), DEFAULT_CONFIG);
+    }
+  } catch (e) {
+    console.error("Erro ao inicializar dados:", e);
+  }
 }
 
-function saveProducts(products) {
-  localStorage.setItem('dm_products', JSON.stringify(products));
+// ===== FIREBASE: LISTENERS EM TEMPO REAL =====
+function listenToData() {
+  // Produtos
+  onSnapshot(collection(db, "produtos"), (snap) => {
+    cachedProducts = snap.docs.map(d => d.data());
+    renderCategories();
+    renderProducts();
+  });
+
+  // Categorias
+  onSnapshot(collection(db, "categorias"), (snap) => {
+    cachedCategories = snap.docs.map(d => d.data());
+    renderCategories();
+    renderProducts();
+  });
+
+  // Config
+  onSnapshot(doc(db, "config", "geral"), (snap) => {
+    if (snap.exists()) {
+      cachedConfig = snap.data();
+      document.title = cachedConfig.nome_loja || "Drogaria Moura";
+    }
+  });
+}
+
+function getProducts() {
+  return cachedProducts || DEFAULT_PRODUCTS;
 }
 
 function getCategories() {
-  const stored = localStorage.getItem('dm_categories');
-  return stored ? JSON.parse(stored) : DEFAULT_CATEGORIES;
+  return cachedCategories || DEFAULT_CATEGORIES;
 }
 
 function getConfig() {
-  const stored = localStorage.getItem('dm_config');
-  return stored ? { ...DEFAULT_CONFIG, ...JSON.parse(stored) } : DEFAULT_CONFIG;
+  return cachedConfig || DEFAULT_CONFIG;
 }
 
 // ===== CATEGORIES =====
 function renderCategories() {
   const categories = getCategories();
   const scroll = document.getElementById('categoriesScroll');
-  
+  if (!scroll) return;
+
   const allBtn = `<button class="cat-btn ${currentCategory === 'Todos' ? 'active' : ''}" onclick="setCategory('Todos')">
     <span class="cat-icon">&#x1F3EA;</span><span>Todos</span>
   </button>`;
-  
+
   const catBtns = categories.map(c => `
     <button class="cat-btn ${currentCategory === c.nome ? 'active' : ''}" onclick="setCategory('${c.nome}')">
       <span class="cat-icon">${c.emoji || '📦'}</span>
       <span>${c.nome}</span>
     </button>
   `).join('');
-  
+
   scroll.innerHTML = allBtn + catBtns;
 }
 
@@ -100,7 +164,8 @@ function renderProducts() {
   const products = getProducts().filter(p => p.status !== 'inativo');
   const grid = document.getElementById('productsGrid');
   const emptyState = document.getElementById('emptyState');
-  
+  if (!grid) return;
+
   let filtered = products;
   if (currentCategory !== 'Todos') {
     filtered = filtered.filter(p => p.categoria === currentCategory);
@@ -111,16 +176,17 @@ function renderProducts() {
       (p.descricao && p.descricao.toLowerCase().includes(searchQuery))
     );
   }
-  
-  document.getElementById('productsCount').textContent = `${filtered.length} produto(s)`;
-  
+
+  const countEl = document.getElementById('productsCount');
+  if (countEl) countEl.textContent = `${filtered.length} produto(s)`;
+
   if (!filtered.length) {
     grid.innerHTML = '';
-    emptyState.style.display = 'block';
+    if (emptyState) emptyState.style.display = 'block';
     return;
   }
-  emptyState.style.display = 'none';
-  
+  if (emptyState) emptyState.style.display = 'none';
+
   grid.innerHTML = filtered.map(p => {
     const inCart = cart.find(c => c.id === p.id);
     const semEstoque = (p.estoque !== undefined && p.estoque !== null && p.estoque <= 0);
@@ -128,7 +194,7 @@ function renderProducts() {
       ? `<img src="${p.imagem}" alt="${p.nome}" onerror="this.style.display='none';this.nextSibling.style.display='block'">`
       : '';
     const emojiEl = `<span class="product-emoji" style="${p.imagem ? 'display:none' : ''}">${p.emoji || '💊'}</span>`;
-    
+
     return `
       <div class="product-card${semEstoque ? ' out-of-stock' : ''}" id="card-${p.id}">
         ${p.promo && !semEstoque ? '<span class="promo-badge">&#x1F525; PROMO</span>' : ''}
@@ -154,43 +220,43 @@ function renderProducts() {
 // ===== CART =====
 function addToCart(id) {
   const products = getProducts();
-  const product = products.find(p => p.id === id);
+  const product = products.find(p => p.id == id);
   if (!product) return;
 
   if (product.estoque !== undefined && product.estoque !== null) {
-    const inCart = cart.find(c => c.id === id);
+    const inCart = cart.find(c => c.id == id);
     const currentQtyInCart = inCart ? inCart.qty : 0;
     if (currentQtyInCart >= product.estoque) {
       showToast(`⚠️ Estoque máximo: ${product.estoque} unidade(s)`);
       return;
     }
   }
-  
-  const existing = cart.find(c => c.id === id);
+
+  const existing = cart.find(c => c.id == id);
   if (existing) {
     existing.qty++;
   } else {
     cart.push({ ...product, qty: 1 });
   }
-  
+
   renderCart();
   renderProducts();
   showToast(`${product.nome} adicionado! 🛒`);
 }
 
 function removeFromCart(id) {
-  cart = cart.filter(c => c.id !== id);
+  cart = cart.filter(c => c.id != id);
   renderCart();
   renderProducts();
 }
 
 function changeQty(id, delta) {
-  const item = cart.find(c => c.id === id);
+  const item = cart.find(c => c.id == id);
   if (!item) return;
-  
+
   if (delta > 0) {
     const products = getProducts();
-    const product = products.find(p => p.id === id);
+    const product = products.find(p => p.id == id);
     if (product && product.estoque !== undefined && product.estoque !== null) {
       if (item.qty >= product.estoque) {
         showToast(`⚠️ Estoque máximo: ${product.estoque} unidade(s)`);
@@ -198,64 +264,66 @@ function changeQty(id, delta) {
       }
     }
   }
-  
+
   item.qty += delta;
-  if (item.qty <= 0) {
-    removeFromCart(id);
-  } else {
-    renderCart();
-  }
+  if (item.qty <= 0) removeFromCart(id);
+  else { renderCart(); renderProducts(); }
 }
 
 function renderCart() {
-  const count = cart.reduce((sum, c) => sum + c.qty, 0);
-  document.getElementById('cartCount').textContent = count;
-  
-  const itemsDiv = document.getElementById('cartItems');
-  const footer = document.getElementById('cartFooter');
-  
+  const total = cart.reduce((sum, c) => sum + c.preco * c.qty, 0);
+  const countEl = document.getElementById('cartCount');
+  const totalEl = document.getElementById('cartTotal');
+  const footerEl = document.getElementById('cartFooter');
+  const emptyEl = document.getElementById('cartEmpty');
+  const itemsEl = document.getElementById('cartItems');
+  const warnEl = document.getElementById('minOrderWarning');
+  const checkoutBtn = document.getElementById('checkoutBtn');
+
+  if (countEl) countEl.textContent = cart.reduce((s, c) => s + c.qty, 0);
+  if (totalEl) totalEl.textContent = `R$ ${total.toFixed(2).replace('.', ',')}`;
+
   if (!cart.length) {
-    itemsDiv.innerHTML = `<div class="cart-empty"><span>🛒</span><p>Seu carrinho está vazio</p></div>`;
-    footer.style.display = 'none';
+    if (footerEl) footerEl.style.display = 'none';
+    if (emptyEl) emptyEl.style.display = 'flex';
+    if (itemsEl) {
+      const existing = itemsEl.querySelectorAll('.cart-item');
+      existing.forEach(e => e.remove());
+    }
     return;
   }
-  
-  footer.style.display = 'block';
-  
-  const total = cart.reduce((sum, c) => sum + c.preco * c.qty, 0);
-  document.getElementById('cartTotal').textContent = `R$ ${total.toFixed(2).replace('.', ',')}`;
-  
-  const minWarning = document.getElementById('minOrderWarning');
-  const checkoutBtn = document.getElementById('checkoutBtn');
-  if (total < VALOR_MINIMO_ENTREGA) {
-    const falta = (VALOR_MINIMO_ENTREGA - total).toFixed(2).replace('.', ',');
-    minWarning.style.display = 'block';
-    minWarning.textContent = `⚠️ Faltam R$ ${falta} para o pedido mínimo`;
-    checkoutBtn.disabled = true;
-    checkoutBtn.classList.add('btn-disabled');
-  } else {
-    minWarning.style.display = 'none';
-    checkoutBtn.disabled = false;
-    checkoutBtn.classList.remove('btn-disabled');
+
+  if (footerEl) footerEl.style.display = 'block';
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  const belowMin = total < VALOR_MINIMO_ENTREGA;
+  if (warnEl) warnEl.style.display = belowMin ? 'block' : 'none';
+  if (checkoutBtn) checkoutBtn.disabled = belowMin;
+
+  if (itemsEl) {
+    const existing = itemsEl.querySelectorAll('.cart-item');
+    existing.forEach(e => e.remove());
+    cart.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'cart-item';
+      div.innerHTML = `
+        <div class="cart-item-img">${item.imagem
+          ? `<img src="${item.imagem}" alt="${item.nome}" onerror="this.parentElement.textContent='${item.emoji || '💊'}'">` 
+          : (item.emoji || '💊')}</div>
+        <div class="cart-item-info">
+          <div class="cart-item-name">${item.nome}</div>
+          <div class="cart-item-price">R$ ${(item.preco * item.qty).toFixed(2).replace('.', ',')}</div>
+        </div>
+        <div class="cart-item-controls">
+          <button class="qty-btn" onclick="changeQty(${item.id}, -1)">−</button>
+          <span class="qty-num">${item.qty}</span>
+          <button class="qty-btn" onclick="changeQty(${item.id}, 1)">+</button>
+          <button class="remove-btn" onclick="removeFromCart(${item.id})">🗑️</button>
+        </div>
+      `;
+      itemsEl.appendChild(div);
+    });
   }
-  
-  itemsDiv.innerHTML = cart.map(item => `
-    <div class="cart-item">
-      <div class="cart-item-img">${item.imagem
-        ? `<img src="${item.imagem}" alt="${item.nome}" onerror="this.parentElement.textContent='${item.emoji || '💊'}'">` 
-        : (item.emoji || '💊')}</div>
-      <div class="cart-item-info">
-        <div class="cart-item-name">${item.nome}</div>
-        <div class="cart-item-price">R$ ${(item.preco * item.qty).toFixed(2).replace('.', ',')}</div>
-      </div>
-      <div class="cart-item-controls">
-        <button class="qty-btn" onclick="changeQty(${item.id}, -1)">−</button>
-        <span class="qty-num">${item.qty}</span>
-        <button class="qty-btn" onclick="changeQty(${item.id}, 1)">+</button>
-        <button class="remove-btn" onclick="removeFromCart(${item.id})">🗑️</button>
-      </div>
-    </div>
-  `).join('');
 }
 
 function toggleCart() {
@@ -293,13 +361,13 @@ function handleTrocoChange() {
 // ===== CHECKOUT =====
 function showCheckout() {
   if (!cart.length) { showToast("Carrinho vazio!"); return; }
-  
+
   const total = cart.reduce((sum, c) => sum + c.preco * c.qty, 0);
   if (total < VALOR_MINIMO_ENTREGA) {
     showToast(`⚠️ Valor mínimo para entrega é R$ ${VALOR_MINIMO_ENTREGA.toFixed(2).replace('.', ',')}`);
     return;
   }
-  
+
   const summaryHTML = `
     <div class="order-summary-title">📦 Resumo do pedido</div>
     ${cart.map(item => `
@@ -314,15 +382,14 @@ function showCheckout() {
     </div>
   `;
   document.getElementById('orderSummary').innerHTML = summaryHTML;
-  
-  // Reset payment/troco state
+
   document.querySelectorAll('input[name="payment"]').forEach(r => r.checked = false);
   const naoOpt = document.querySelector('input[name="troco"][value="nao"]');
   if (naoOpt) naoOpt.checked = true;
   document.getElementById('trocoSection').style.display = 'none';
   document.getElementById('trocoValorGroup').style.display = 'none';
   document.getElementById('trocoValor').value = '';
-  
+
   document.getElementById('cartSidebar').classList.remove('open');
   document.getElementById('cartOverlay').classList.remove('open');
   document.getElementById('checkoutModal').classList.add('open');
@@ -332,21 +399,20 @@ function closeCheckout() {
   document.getElementById('checkoutModal').classList.remove('open');
 }
 
-function finalizarPedido() {
+async function finalizarPedido() {
   const nome = document.getElementById('clientName').value.trim();
   const telefone = document.getElementById('clientPhone').value.trim();
   const endereco = document.getElementById('clientAddress').value.trim();
   const pagamentoEl = document.querySelector('input[name="payment"]:checked');
-  
+
   if (!nome) { showToast("⚠️ Informe seu nome!"); document.getElementById('clientName').focus(); return; }
   if (!telefone) { showToast("⚠️ Informe seu telefone!"); document.getElementById('clientPhone').focus(); return; }
   if (!endereco) { showToast("⚠️ Informe seu endereço!"); document.getElementById('clientAddress').focus(); return; }
   if (!pagamentoEl) { showToast("⚠️ Escolha a forma de pagamento!"); return; }
-  
+
   const pagamento = pagamentoEl.value;
   const total = cart.reduce((sum, c) => sum + c.preco * c.qty, 0);
-  
-  // Build troco text
+
   let trocoInfo = '';
   if (pagamento === 'Dinheiro') {
     const trocoOpt = document.querySelector('input[name="troco"]:checked');
@@ -367,11 +433,11 @@ function finalizarPedido() {
       trocoInfo = '\nSEM TROCO';
     }
   }
-  
+
   const produtosList = cart.map(item =>
     `• ${item.nome} x${item.qty} — R$ ${(item.preco * item.qty).toFixed(2).replace('.', ',')}`
   ).join('\n');
-  
+
   const config = getConfig();
   let mensagem = config.mensagem_padrao;
   mensagem = mensagem
@@ -382,37 +448,37 @@ function finalizarPedido() {
     .replace('{nome}', nome)
     .replace('{telefone}', telefone)
     .replace('{endereco}', endereco);
-  
-  // ===== BAIXA NO ESTOQUE =====
-  const products = getProducts();
-  cart.forEach(cartItem => {
-    const idx = products.findIndex(p => p.id === cartItem.id);
-    if (idx !== -1 && products[idx].estoque !== undefined && products[idx].estoque !== null) {
-      products[idx].estoque = Math.max(0, products[idx].estoque - cartItem.qty);
+
+  // Baixa estoque no Firebase
+  try {
+    const products = getProducts();
+    for (const cartItem of cart) {
+      const prod = products.find(p => p.id == cartItem.id);
+      if (prod && prod.estoque !== undefined && prod.estoque !== null) {
+        const novoEstoque = Math.max(0, prod.estoque - cartItem.qty);
+        await setDoc(doc(db, "produtos", String(prod.id)), { ...prod, estoque: novoEstoque });
+      }
     }
-  });
-  saveProducts(products);
-  // ===========================
-  
-  // Número fixo no código — funciona em site estático
+  } catch (e) {
+    console.error("Erro ao atualizar estoque:", e);
+  }
+
   const phone = WHATSAPP_FIXO.replace(/\D/g, '');
   const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
   window.open(url, '_blank');
-  
-  // Clear cart
+
   cart = [];
   renderCart();
   renderProducts();
   closeCheckout();
-  
-  // Reset form
+
   document.getElementById('clientName').value = '';
   document.getElementById('clientPhone').value = '';
   document.getElementById('clientAddress').value = '';
   document.getElementById('trocoSection').style.display = 'none';
   document.getElementById('trocoValorGroup').style.display = 'none';
   document.getElementById('trocoValor').value = '';
-  
+
   showToast("✅ Pedido enviado pelo WhatsApp!");
 }
 
@@ -431,11 +497,22 @@ function showToast(msg) {
   toast._t = setTimeout(() => toast.classList.remove('show'), 2800);
 }
 
+// Expõe funções globalmente
+window.setCategory = setCategory;
+window.filterProducts = filterProducts;
+window.addToCart = addToCart;
+window.removeFromCart = removeFromCart;
+window.changeQty = changeQty;
+window.toggleCart = toggleCart;
+window.showCheckout = showCheckout;
+window.closeCheckout = closeCheckout;
+window.finalizarPedido = finalizarPedido;
+window.handlePaymentChange = handlePaymentChange;
+window.handleTrocoChange = handleTrocoChange;
+
 // ===== INIT =====
-document.addEventListener('DOMContentLoaded', () => {
-  renderCategories();
-  renderProducts();
+document.addEventListener('DOMContentLoaded', async () => {
+  await initFirebaseData();
+  listenToData();
   renderCart();
-  const config = getConfig();
-  document.title = config.nome_loja;
 });
