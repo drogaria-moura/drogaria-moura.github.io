@@ -1,16 +1,33 @@
-// ===== CONFIGURAÇÃO FIXA =====
-// O telefone do WhatsApp é definido em app.js (WHATSAPP_FIXO)
-// e também fica disponível nas configurações para referência
+// ===== CONFIGURAÇÃO FIREBASE =====
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, doc, onSnapshot, getDocs, setDoc, deleteDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
+const firebaseConfig = {
+  apiKey: "AIzaSyBbdRea1buoftYzpBP8QCs",
+  authDomain: "drogaria-moura-c7bcc.firebaseapp.com",
+  projectId: "drogaria-moura-c7bcc",
+  storageBucket: "drogaria-moura-c7bcc.appspot.com",
+  messagingSenderId: "632310446528",
+  appId: "1:632310446528:web:bc5081469",
+  measurementId: "G-SX0TTBLZTT"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
+
+// ===== AUTH =====
 const ADMIN_USER = 'admin';
 const ADMIN_PASS = 'admin123';
 
-// ===== AUTH =====
+let cachedProducts = [];
+let cachedCategories = [];
+let cachedConfig = {};
+
 function doLogin() {
   const user = document.getElementById('loginUser').value.trim();
   const pass = document.getElementById('loginPass').value;
   const errEl = document.getElementById('loginError');
-  
+
   if (user === ADMIN_USER && pass === ADMIN_PASS) {
     sessionStorage.setItem('dm_admin_auth', '1');
     document.getElementById('loginScreen').style.display = 'none';
@@ -38,83 +55,63 @@ function checkAuth() {
   }
 }
 
-// ===== DATA =====
-const DEFAULT_PRODUCTS = [
-  { id: 1, nome: "Dipirona 500mg", descricao: "Analgésico e antitérmico 20 comprimidos", preco: 5.90, categoria: "Medicamentos", emoji: "💊", status: "ativo", promo: false, estoque: 50 },
-  { id: 2, nome: "Paracetamol 750mg", descricao: "Alívio de dores e febre 20 comprimidos", preco: 7.50, categoria: "Medicamentos", emoji: "💊", status: "ativo", promo: true, estoque: 40 },
-  { id: 3, nome: "Ibuprofeno 400mg", descricao: "Anti-inflamatório 20 comprimidos", preco: 12.90, categoria: "Medicamentos", emoji: "💊", status: "ativo", promo: false, estoque: 30 },
-  { id: 4, nome: "Vitamina C 1000mg", descricao: "Efervescente sabor laranja 10 comprimidos", preco: 18.90, categoria: "Vitaminas", emoji: "🍊", status: "ativo", promo: true, estoque: 25 },
-  { id: 5, nome: "Vitamina D3 2000UI", descricao: "Suporte imunológico 60 cápsulas", preco: 29.90, categoria: "Vitaminas", emoji: "☀️", status: "ativo", promo: false, estoque: 20 },
-  { id: 6, nome: "Complexo B", descricao: "Vitaminas do complexo B 60 comprimidos", preco: 22.90, categoria: "Vitaminas", emoji: "🌿", status: "ativo", promo: false, estoque: 15 },
-  { id: 7, nome: "Fralda Pampers M", descricao: "Pacote com 30 unidades tamanho M", preco: 49.90, categoria: "Higiene Infantil", emoji: "👶", status: "ativo", promo: false, estoque: 10 },
-  { id: 8, nome: "Shampoo Infantil", descricao: "Fórmula suave sem lágrimas 200ml", preco: 16.90, categoria: "Higiene Infantil", emoji: "🧴", status: "ativo", promo: true, estoque: 18 },
-  { id: 9, nome: "Pomada Hipoglós", descricao: "Proteção para assaduras 60g", preco: 14.50, categoria: "Higiene Infantil", emoji: "🧴", status: "ativo", promo: false, estoque: 22 },
-  { id: 10, nome: "Álcool Gel 70%", descricao: "Antisséptico higienizador 500ml", preco: 8.90, categoria: "Promoções", emoji: "🧴", status: "ativo", promo: true, estoque: 35 },
-  { id: 11, nome: "Protetor Solar FPS50", descricao: "Proteção solar corporal 120ml", preco: 35.90, categoria: "Promoções", emoji: "☀️", status: "ativo", promo: true, estoque: 12 },
-  { id: 12, nome: "Omega 3 1000mg", descricao: "Ácidos graxos essenciais 60 cápsulas", preco: 42.90, categoria: "Vitaminas", emoji: "🐟", status: "ativo", promo: false, estoque: 8 },
-];
+// ===== FIREBASE LISTENERS =====
+function startListeners() {
+  onSnapshot(collection(db, "produtos"), (snap) => {
+    cachedProducts = snap.docs.map(d => d.data());
+    renderAdminProducts();
+  });
 
-const DEFAULT_CATEGORIES = [
-  { id: 1, nome: "Medicamentos", emoji: "💊" },
-  { id: 2, nome: "Vitaminas", emoji: "🍊" },
-  { id: 3, nome: "Higiene Infantil", emoji: "👶" },
-  { id: 4, nome: "Promoções", emoji: "🔥" },
-];
+  onSnapshot(collection(db, "categorias"), (snap) => {
+    cachedCategories = snap.docs.map(d => d.data());
+    renderAdminCategories();
+  });
 
-const DEFAULT_CONFIG = {
-  nome_loja: "Drogaria Moura",
-  mensagem_padrao: "Olá Drogaria Moura!\n\nPEDIDO:\n{produtos}\n\nTOTAL: R$ {total}\n\nFORMA DE PAGAMENTO: {pagamento}{troco}\n\nCLIENTE: {nome}\nTELEFONE: {telefone}\nENDEREÇO: {endereco}"
-};
-
-function getProducts() {
-  const stored = localStorage.getItem('dm_products');
-  if (stored) return JSON.parse(stored);
-  localStorage.setItem('dm_products', JSON.stringify(DEFAULT_PRODUCTS));
-  return DEFAULT_PRODUCTS;
+  onSnapshot(doc(db, "config", "geral"), (snap) => {
+    if (snap.exists()) {
+      cachedConfig = snap.data();
+      loadConfigForm();
+    }
+  });
 }
 
-function saveProducts(products) {
-  localStorage.setItem('dm_products', JSON.stringify(products));
+function getProducts() { return cachedProducts; }
+function getCategories() { return cachedCategories; }
+function getConfig() { return cachedConfig; }
+
+async function saveProducts(products) {
+  for (const p of products) {
+    await setDoc(doc(db, "produtos", String(p.id)), p);
+  }
 }
 
-function getCategories() {
-  const stored = localStorage.getItem('dm_categories');
-  return stored ? JSON.parse(stored) : DEFAULT_CATEGORIES;
+async function saveCategories(cats) {
+  for (const c of cats) {
+    await setDoc(doc(db, "categorias", String(c.id)), c);
+  }
 }
 
-function saveCategories(cats) {
-  localStorage.setItem('dm_categories', JSON.stringify(cats));
-}
-
-function getConfig() {
-  const stored = localStorage.getItem('dm_config');
-  return stored ? { ...DEFAULT_CONFIG, ...JSON.parse(stored) } : DEFAULT_CONFIG;
-}
-
-function saveConfigData(cfg) {
-  localStorage.setItem('dm_config', JSON.stringify(cfg));
+async function saveConfigData(cfg) {
+  await setDoc(doc(db, "config", "geral"), cfg);
 }
 
 // ===== INIT =====
 function initAdmin() {
   showTab('produtos');
-  loadConfigForm();
+  startListeners();
 }
 
 // ===== TABS =====
 function showTab(tab) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
-  
+
   document.getElementById(`tab-${tab}`).classList.add('active');
   document.getElementById(`nav-${tab}`).classList.add('active');
-  
+
   const titles = { produtos: 'Gerenciar Produtos', categorias: 'Gerenciar Categorias', configuracoes: 'Configurações da Loja' };
   document.getElementById('adminTitle').textContent = titles[tab];
-  
-  if (tab === 'produtos') renderAdminProducts();
-  if (tab === 'categorias') renderAdminCategories();
-  
+
   document.querySelector('.sidebar').classList.remove('mobile-open');
 }
 
@@ -144,8 +141,9 @@ function renderAdminProducts() {
   const filtered = products.filter(p =>
     !search || p.nome.toLowerCase().includes(search) || p.categoria.toLowerCase().includes(search)
   );
-  
+
   const tbody = document.getElementById('productsTableBody');
+  if (!tbody) return;
   tbody.innerHTML = filtered.map(p => {
     const imgContent = p.imagem
       ? `<img src="${p.imagem}" alt="${p.nome}" onerror="this.parentElement.textContent='${p.emoji || '💊'}'">`
@@ -178,13 +176,12 @@ function renderAdminProducts() {
       </tr>
     `;
   }).join('');
-  
+
   if (!filtered.length) {
     tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:#9AA0A6">Nenhum produto encontrado</td></tr>`;
   }
 }
 
-// Product Modal
 let editingProductId = null;
 
 function openProductModal() {
@@ -199,7 +196,7 @@ function openProductModal() {
   document.getElementById('pEmoji').value = '💊';
   document.getElementById('pStatus').value = 'ativo';
   document.getElementById('pPromo').checked = false;
-  
+
   populateCategoryDropdown();
   document.getElementById('productModal').classList.add('open');
   document.getElementById('pNome').focus();
@@ -207,21 +204,20 @@ function openProductModal() {
 
 function editProduct(id) {
   const products = getProducts();
-  const p = products.find(pr => pr.id === id);
+  const p = products.find(pr => pr.id == id);
   if (!p) return;
-  
   editingProductId = id;
   document.getElementById('productModalTitle').textContent = 'Editar Produto';
-  document.getElementById('productId').value = id;
+  document.getElementById('productId').value = p.id;
   document.getElementById('pNome').value = p.nome;
   document.getElementById('pDescricao').value = p.descricao || '';
   document.getElementById('pPreco').value = p.preco;
-  document.getElementById('pEstoque').value = (p.estoque !== undefined && p.estoque !== null) ? p.estoque : '';
+  document.getElementById('pEstoque').value = p.estoque !== null && p.estoque !== undefined ? p.estoque : '';
   document.getElementById('pImagem').value = p.imagem || '';
   document.getElementById('pEmoji').value = p.emoji || '💊';
   document.getElementById('pStatus').value = p.status;
   document.getElementById('pPromo').checked = p.promo || false;
-  
+
   populateCategoryDropdown(p.categoria);
   document.getElementById('productModal').classList.add('open');
 }
@@ -238,18 +234,17 @@ function closeProductModal() {
   document.getElementById('productModal').classList.remove('open');
 }
 
-function saveProduct() {
+async function saveProduct() {
   const nome = document.getElementById('pNome').value.trim();
   const preco = parseFloat(document.getElementById('pPreco').value);
   const estoqueVal = document.getElementById('pEstoque').value.trim();
-  
+
   if (!nome) { showToast("⚠️ Informe o nome do produto"); return; }
   if (!preco || preco <= 0) { showToast("⚠️ Informe o preço"); return; }
-  
+
   const estoque = estoqueVal !== '' ? parseInt(estoqueVal, 10) : null;
-  
   const products = getProducts();
-  
+
   const productData = {
     nome,
     descricao: document.getElementById('pDescricao').value.trim(),
@@ -261,46 +256,48 @@ function saveProduct() {
     status: document.getElementById('pStatus').value,
     promo: document.getElementById('pPromo').checked,
   };
-  
-  if (editingProductId) {
-    const idx = products.findIndex(p => p.id === editingProductId);
-    if (idx !== -1) products[idx] = { ...products[idx], ...productData };
-    showToast("✅ Produto atualizado!");
-  } else {
-    const newId = products.length ? Math.max(...products.map(p => p.id)) + 1 : 1;
-    products.push({ id: newId, ...productData });
-    showToast("✅ Produto adicionado!");
+
+  try {
+    if (editingProductId) {
+      const existing = products.find(p => p.id == editingProductId);
+      await setDoc(doc(db, "produtos", String(editingProductId)), { ...existing, ...productData });
+      showToast("✅ Produto atualizado!");
+    } else {
+      const newId = products.length ? Math.max(...products.map(p => Number(p.id))) + 1 : 1;
+      await setDoc(doc(db, "produtos", String(newId)), { id: newId, ...productData });
+      showToast("✅ Produto adicionado!");
+    }
+    closeProductModal();
+  } catch (e) {
+    showToast("❌ Erro ao salvar produto");
+    console.error(e);
   }
-  
-  saveProducts(products);
-  closeProductModal();
-  renderAdminProducts();
 }
 
-// Delete product
+// Delete
 let deleteTarget = null;
 let deleteType = null;
 
 function deleteProduct(id) {
   deleteTarget = id;
   deleteType = 'product';
-  const products = getProducts();
-  const p = products.find(pr => pr.id === id);
+  const p = getProducts().find(pr => pr.id == id);
   document.getElementById('confirmText').textContent = `Deseja excluir "${p?.nome}"?`;
   document.getElementById('confirmModal').classList.add('open');
 }
 
-function confirmDelete() {
-  if (deleteType === 'product') {
-    const products = getProducts().filter(p => p.id !== deleteTarget);
-    saveProducts(products);
-    renderAdminProducts();
-    showToast("🗑️ Produto excluído!");
-  } else if (deleteType === 'category') {
-    const cats = getCategories().filter(c => c.id !== deleteTarget);
-    saveCategories(cats);
-    renderAdminCategories();
-    showToast("🗑️ Categoria excluída!");
+async function confirmDelete() {
+  try {
+    if (deleteType === 'product') {
+      await deleteDoc(doc(db, "produtos", String(deleteTarget)));
+      showToast("🗑️ Produto excluído!");
+    } else if (deleteType === 'category') {
+      await deleteDoc(doc(db, "categorias", String(deleteTarget)));
+      showToast("🗑️ Categoria excluída!");
+    }
+  } catch (e) {
+    showToast("❌ Erro ao excluir");
+    console.error(e);
   }
   closeConfirm();
 }
@@ -316,7 +313,8 @@ function renderAdminCategories() {
   const cats = getCategories();
   const products = getProducts();
   const list = document.getElementById('categoriesList');
-  
+  if (!list) return;
+
   list.innerHTML = cats.map(c => {
     const count = products.filter(p => p.categoria === c.nome).length;
     return `
@@ -331,7 +329,7 @@ function renderAdminCategories() {
       </div>
     `;
   }).join('');
-  
+
   if (!cats.length) {
     list.innerHTML = '<p style="color:var(--gray-400);text-align:center;padding:40px">Nenhuma categoria cadastrada</p>';
   }
@@ -350,8 +348,7 @@ function openCatModal() {
 }
 
 function editCat(id) {
-  const cats = getCategories();
-  const c = cats.find(cat => cat.id === id);
+  const c = getCategories().find(cat => cat.id == id);
   if (!c) return;
   editingCatId = id;
   document.getElementById('catModalTitle').textContent = 'Editar Categoria';
@@ -365,33 +362,34 @@ function closeCatModal() {
   document.getElementById('catModal').classList.remove('open');
 }
 
-function saveCat() {
+async function saveCat() {
   const nome = document.getElementById('catNome').value.trim();
   if (!nome) { showToast("⚠️ Informe o nome da categoria"); return; }
-  
-  const cats = getCategories();
+
   const catData = { nome, emoji: document.getElementById('catEmoji').value.trim() || '📦' };
-  
-  if (editingCatId) {
-    const idx = cats.findIndex(c => c.id === editingCatId);
-    if (idx !== -1) cats[idx] = { ...cats[idx], ...catData };
-    showToast("✅ Categoria atualizada!");
-  } else {
-    const newId = cats.length ? Math.max(...cats.map(c => c.id)) + 1 : 1;
-    cats.push({ id: newId, ...catData });
-    showToast("✅ Categoria adicionada!");
+
+  try {
+    if (editingCatId) {
+      const existing = getCategories().find(c => c.id == editingCatId);
+      await setDoc(doc(db, "categorias", String(editingCatId)), { ...existing, ...catData });
+      showToast("✅ Categoria atualizada!");
+    } else {
+      const cats = getCategories();
+      const newId = cats.length ? Math.max(...cats.map(c => Number(c.id))) + 1 : 1;
+      await setDoc(doc(db, "categorias", String(newId)), { id: newId, ...catData });
+      showToast("✅ Categoria adicionada!");
+    }
+    closeCatModal();
+  } catch (e) {
+    showToast("❌ Erro ao salvar categoria");
+    console.error(e);
   }
-  
-  saveCategories(cats);
-  closeCatModal();
-  renderAdminCategories();
 }
 
 function deleteCat(id) {
   deleteTarget = id;
   deleteType = 'category';
-  const cats = getCategories();
-  const c = cats.find(cat => cat.id === id);
+  const c = getCategories().find(cat => cat.id == id);
   document.getElementById('confirmText').textContent = `Deseja excluir a categoria "${c?.nome}"?`;
   document.getElementById('confirmModal').classList.add('open');
 }
@@ -399,18 +397,24 @@ function deleteCat(id) {
 // ===== CONFIG =====
 function loadConfigForm() {
   const cfg = getConfig();
-  document.getElementById('cfgNome').value = cfg.nome_loja;
-  document.getElementById('cfgMensagem').value = cfg.mensagem_padrao;
+  const cfgNome = document.getElementById('cfgNome');
+  const cfgMsg = document.getElementById('cfgMensagem');
+  if (cfgNome && cfg.nome_loja) cfgNome.value = cfg.nome_loja;
+  if (cfgMsg && cfg.mensagem_padrao) cfgMsg.value = cfg.mensagem_padrao;
 }
 
-function saveConfig() {
+async function saveConfig() {
   const nome = document.getElementById('cfgNome').value.trim();
   const mensagem = document.getElementById('cfgMensagem').value;
-  
   if (!nome) { showToast("⚠️ Informe o nome da loja"); return; }
-  
-  saveConfigData({ nome_loja: nome, mensagem_padrao: mensagem });
-  showToast("✅ Configurações salvas!");
+
+  try {
+    await saveConfigData({ nome_loja: nome, mensagem_padrao: mensagem });
+    showToast("✅ Configurações salvas!");
+  } catch (e) {
+    showToast("❌ Erro ao salvar configurações");
+    console.error(e);
+  }
 }
 
 // ===== TOAST =====
@@ -427,6 +431,26 @@ function showToast(msg) {
   clearTimeout(toast._t);
   toast._t = setTimeout(() => toast.classList.remove('show'), 2500);
 }
+
+// Expõe funções globalmente
+window.doLogin = doLogin;
+window.doLogout = doLogout;
+window.showTab = showTab;
+window.toggleSidebar = toggleSidebar;
+window.openProductModal = openProductModal;
+window.editProduct = editProduct;
+window.closeProductModal = closeProductModal;
+window.saveProduct = saveProduct;
+window.deleteProduct = deleteProduct;
+window.confirmDelete = confirmDelete;
+window.closeConfirm = closeConfirm;
+window.openCatModal = openCatModal;
+window.editCat = editCat;
+window.closeCatModal = closeCatModal;
+window.saveCat = saveCat;
+window.deleteCat = deleteCat;
+window.saveConfig = saveConfig;
+window.renderAdminProducts = renderAdminProducts;
 
 // ===== BOOT =====
 document.addEventListener('DOMContentLoaded', checkAuth);
