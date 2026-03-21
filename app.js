@@ -16,7 +16,7 @@ const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 
 // ===== CONFIGURAÇÃO FIXA =====
-const WHATSAPP_FIXO = "5511999999999"; // ← ALTERE PARA O NÚMERO REAL DA DROGARIA
+const WHATSAPP_FIXO = "5563992256932"; // ← ALTERE PARA O NÚMERO REAL DA DROGARIA
 const VALOR_MINIMO_ENTREGA = 25.00;
 
 const DEFAULT_PRODUCTS = [
