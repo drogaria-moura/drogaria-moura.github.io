@@ -17,7 +17,7 @@ const db = getFirestore(firebaseApp);
 
 // ===== CONFIGURAÇÃO FIXA =====
 const WHATSAPP_FIXO = "5563992256932"; // ← ALTERE PARA O NÚMERO REAL DA DROGARIA
-const VALOR_MINIMO_ENTREGA = 00.00;
+const VALOR_MINIMO_ENTREGA = 0.00;
 
 const DEFAULT_PRODUCTS = [
   { id: 1, nome: "Dipirona 500mg", descricao: "Analgésico e antitérmico 20 comprimidos", preco: 5.90, categoria: "Medicamentos", emoji: "💊", status: "ativo", promo: false, estoque: 50 },
